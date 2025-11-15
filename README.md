@@ -1,3 +1,74 @@
+---
+
+## 🚩 Features
+
+- Interactive simulation of written language evolution
+- Visualizes symbol simplification, innovation, and cultural divergence
+- Adjustable parameters: population, isolation, innovation, simplification, vocabulary, and more
+- Export/import simulation state, images, and parameter presets
+- Analytics: charts for complexity, vocabulary growth, and divergence
+- Communication log with filtering, search, and export
+- Mobile and touch-friendly UI
+- No dependencies, works fully offline
+
+---
+
+# 🏁 How to Use
+
+1. **Open** [`ScriptForge.html`](./ScriptForge.html) in your browser (no install needed).
+2. **Adjust parameters** in the left panel (population, evolution, communication, etc.).
+3. **Start the simulation** with the "Start Evolution" button.
+4. **Observe** the evolution of scripts, agent communication, and analytics.
+5. **Step** through generations or adjust speed for detailed analysis.
+6. **Export** data, images, or parameter presets as needed.
+7. **Import** previous runs or share configurations with others.
+
+---
+
+## 🖼️ Screenshots
+
+<p align="center">
+    <img src="./screenshot.png" alt="ScriptForge Screenshot" width="600"/>
+</p>
+
+---
+
+## ❓ FAQ / Troubleshooting
+
+**Q: The simulation doesn't start or UI looks broken?**
+
+- Make sure you opened `ScriptForge.html` in a modern browser (Chrome, Firefox, Edge, Safari).
+- If you downloaded from GitHub, ensure all files are in the same folder.
+
+**Q: Can I use this offline?**
+
+- Yes! ScriptForge is fully offline-capable.
+
+**Q: How do I share a simulation setup?**
+
+- Use the "Copy Shareable Config Link" in the Export section to generate a URL with your parameters.
+
+**Q: Can I contribute or suggest features?**
+
+- Absolutely! See the Contributing section below.
+
+---
+
+## 🤝 Contributing
+
+Contributions, bug reports, and feature suggestions are welcome!
+
+1. Fork this repository
+2. Create a new branch for your feature or fix
+3. Submit a pull request with a clear description
+
+For major changes, please open an issue first to discuss what you’d like to change.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
 
 <div align="center">
  <h1>🪶 ScriptForge</h1>
@@ -18,6 +89,7 @@
 ---
 
 <p align="center">
+
  <em>From pictographs to alphabets, from clarity to abstraction—ScriptForge simulates the fascinating journey of written language evolution.</em>
 </p>
 

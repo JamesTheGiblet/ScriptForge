@@ -1,9 +1,69 @@
+        // Compound structure for multi-symbol words
+        class Compound {
+            constructor(symbols, meaning, cultureName = null) {
+                this.symbols = symbols; // Array of Symbol objects
+                this.meaning = meaning; // New meaning for the compound
+                this.cultureName = cultureName;
+                this.id = symbols.map(s => s.id).join('-') + '-' + meaning;
+                this.birthGeneration = simulation ? simulation.generation : 0;
+            }
+        }
+
+        // =====================
+        // Grammar Class (Step 3)
+        // =====================
+        class Grammar {
+            constructor({wordOrder, adjNounOrder, useParticles, particles}) {
+                this.wordOrder = wordOrder || 'SVO';
+                this.adjNounOrder = adjNounOrder || 'AdjNoun';
+                this.useParticles = useParticles || false;
+                this.particles = particles || {subject: '', object: '', verb: '', modifier: ''};
+            }
+            innovate() {
+                let newOrder = this.wordOrder;
+                let newAdjNoun = this.adjNounOrder;
+                let newParticles = {...this.particles};
+                let newUseParticles = this.useParticles;
+                let r = Math.random();
+                if (r < 0.25) {
+                    const orders = ['SVO','SOV','VSO','VOS','OSV','OVS'];
+                    newOrder = orders[Math.floor(Math.random()*orders.length)];
+                } else if (r < 0.5) {
+                    newAdjNoun = (this.adjNounOrder === 'AdjNoun') ? 'NounAdj' : 'AdjNoun';
+                } else if (r < 0.75) {
+                    newUseParticles = !this.useParticles;
+                } else {
+                    const particleSet = ['-ka','-no','-te','-li','-zu','-ra','-mi','-po','-sa','-tu',''];
+                    for (let key of Object.keys(newParticles)) {
+                        if (Math.random() < 0.5) newParticles[key] = particleSet[Math.floor(Math.random()*particleSet.length)];
+                    }
+                }
+                return new Grammar({wordOrder: newOrder, adjNounOrder: newAdjNoun, useParticles: newUseParticles, particles: newParticles});
+            }
+            clone() {
+                return new Grammar({
+                    wordOrder: this.wordOrder,
+                    adjNounOrder: this.adjNounOrder,
+                    useParticles: this.useParticles,
+                    particles: {...this.particles}
+                });
+            }
+            describe() {
+                let desc = `${this.wordOrder}, ${this.adjNounOrder}`;
+                if (this.useParticles) {
+                    desc += `, Particles: S[${this.particles.subject}] O[${this.particles.object}] V[${this.particles.verb}] Mod[${this.particles.modifier}]`;
+                }
+                return desc;
+            }
+        }
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ScriptForge - Written Language Evolution</title>
+    <!-- Chart.js CDN for analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.js"></script>
     <style>
         * {
             margin: 0;
@@ -91,6 +151,7 @@
             background: rgba(255, 255, 255, 0.1);
             outline: none;
             -webkit-appearance: none;
+            appearance: none;
         }
 
         input[type="range"]::-webkit-slider-thumb {
@@ -263,14 +324,81 @@
         @media (max-width: 968px) {
             .main-grid {
                 grid-template-columns: 1fr;
+                gap: 0;
             }
-
+            .controls-panel {
+                margin-bottom: 20px;
+                width: 100%;
+                padding: 12px;
+            }
             h1 {
-                font-size: 1.8em;
+                font-size: 1.5em;
             }
-
             .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            .visualization-area {
+                min-height: 350px;
+                padding: 10px;
+            }
+            .symbol-display, .evolution-timeline, .info-panel {
+                padding: 10px;
+                margin-top: 10px;
+            }
+            .symbol-grid {
                 grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            .control-group h3 {
+                font-size: 1em;
+            }
+            .control-item label {
+                font-size: 0.95em;
+            }
+            button, .btn-primary, .btn-secondary {
+                font-size: 0.95em;
+                padding: 10px;
+            }
+            .container {
+                padding: 5px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.1em;
+            }
+            .subtitle {
+                font-size: 0.95em;
+            }
+            .controls-panel {
+                padding: 6px;
+            }
+            .visualization-area {
+                min-height: 200px;
+            }
+            .symbol-grid {
+                grid-template-columns: 1fr;
+            }
+            .stat-card {
+                padding: 10px;
+            }
+            .info-panel, .symbol-display, .evolution-timeline {
+                padding: 6px;
+            }
+            .container {
+                padding: 2px;
+            }
+            .control-group h3 {
+                font-size: 0.95em;
+            }
+            .control-item label {
+                font-size: 0.9em;
+            }
+            button, .btn-primary, .btn-secondary {
+                font-size: 0.9em;
+                padding: 8px;
             }
         }
 
@@ -357,6 +485,11 @@
                     <button class="btn-primary" id="startBtn">Start Evolution</button>
                     <button class="btn-secondary" id="pauseBtn">Pause</button>
                     <button class="btn-secondary" id="resetBtn">Reset</button>
+                    <button class="btn-secondary" id="stepBtn">Step</button>
+                    <div class="control-item" style="margin-top:10px;">
+                        <label>Simulation Speed: <span class="value-display" id="speedValue">1x</span></label>
+                        <input type="range" id="speedSlider" min="0.1" max="3" value="1" step="0.1" title="Simulation Speed">
+                    </div>
                 </div>
 
                 <div class="control-group">
@@ -365,21 +498,28 @@
                     <button class="btn-secondary" id="exportSvgBtn">Export as SVG</button>
                     <button class="btn-secondary" id="exportJsonBtn">Export Data (JSON)</button>
                     <button class="btn-secondary" id="exportManuscriptBtn">Export Manuscript</button>
+                    <input type="file" id="importJsonInput" accept="application/json" style="display:none">
+                    <button class="btn-secondary" id="importJsonBtn">Import Data (JSON)</button>
+                    <hr style="margin: 15px 0; border: none; border-top: 1px solid rgba(255,215,0,0.1);">
+                    <button class="btn-secondary" id="savePresetBtn">Save Parameter Preset</button>
+                    <input type="file" id="loadPresetInput" accept="application/json" style="display:none">
+                    <button class="btn-secondary" id="loadPresetBtn">Load Parameter Preset</button>
+                    <button class="btn-secondary" id="sharePresetBtn">Copy Shareable Config Link</button>
                 </div>
 
                 <div class="control-group">
                     <h3>🌍 Population</h3>
                     <div class="control-item">
                         <label>Cultures: <span class="value-display" id="culturesValue">3</span></label>
-                        <input type="range" id="culturesSlider" min="1" max="5" value="3">
+                        <input type="range" id="culturesSlider" min="1" max="5" value="3" title="Number of Cultures">
                     </div>
                     <div class="control-item">
                         <label>Agents per Culture: <span class="value-display" id="agentsValue">8</span></label>
-                        <input type="range" id="agentsSlider" min="4" max="20" value="8">
+                        <input type="range" id="agentsSlider" min="4" max="20" value="8" title="Agents per Culture">
                     </div>
                     <div class="control-item">
                         <label>Cultural Isolation: <span class="value-display" id="isolationValue">30%</span></label>
-                        <input type="range" id="isolationSlider" min="0" max="100" value="30">
+                        <input type="range" id="isolationSlider" min="0" max="100" value="30" title="Cultural Isolation">
                     </div>
                 </div>
 
@@ -387,15 +527,15 @@
                     <h3>✏️ Evolution</h3>
                     <div class="control-item">
                         <label>Simplification Rate: <span class="value-display" id="simplificationValue">50%</span></label>
-                        <input type="range" id="simplificationSlider" min="0" max="100" value="50">
+                        <input type="range" id="simplificationSlider" min="0" max="100" value="50" title="Simplification Rate">
                     </div>
                     <div class="control-item">
                         <label>Innovation Rate: <span class="value-display" id="innovationValue">30%</span></label>
-                        <input type="range" id="innovationSlider" min="0" max="100" value="30">
+                        <input type="range" id="innovationSlider" min="0" max="100" value="30" title="Innovation Rate">
                     </div>
                     <div class="control-item">
                         <label>Abstraction Pressure: <span class="value-display" id="abstractionValue">40%</span></label>
-                        <input type="range" id="abstractionSlider" min="0" max="100" value="40">
+                        <input type="range" id="abstractionSlider" min="0" max="100" value="40" title="Abstraction Pressure">
                     </div>
                 </div>
 
@@ -403,11 +543,11 @@
                     <h3>📚 Communication</h3>
                     <div class="control-item">
                         <label>Vocabulary Size: <span class="value-display" id="vocabValue">12</span></label>
-                        <input type="range" id="vocabSlider" min="6" max="30" value="12">
+                        <input type="range" id="vocabSlider" min="6" max="30" value="12" title="Vocabulary Size">
                     </div>
                     <div class="control-item">
                         <label>Communication Frequency: <span class="value-display" id="commFreqValue">50%</span></label>
-                        <input type="range" id="commFreqSlider" min="10" max="100" value="50">
+                        <input type="range" id="commFreqSlider" min="10" max="100" value="50" title="Communication Frequency">
                     </div>
                 </div>
 
@@ -447,15 +587,444 @@
                 </div>
 
                 <div class="evolution-timeline">
-                    <h3 style="color: #ffd700; margin-bottom: 15px;">Communication Log</h3>
+                                    <!-- Analytics Panel -->
+                                    <div class="info-panel" style="margin-top: 25px;">
+                                        <h4>📊 Analytics</h4>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                                            <div style="flex:1; min-width: 300px;">
+                                                <canvas id="complexityChart" height="180"></canvas>
+                                            </div>
+                                            <div style="flex:1; min-width: 300px;">
+                                                <canvas id="vocabChart" height="180"></canvas>
+                                            </div>
+                                            <div style="flex:1; min-width: 300px;">
+                                                <canvas id="divergenceChart" height="180"></canvas>
+                                            </div>
+                                        </div>
+                                        <div style="margin-top: 20px;">
+                                            <canvas id="eventTimelineChart" height="100"></canvas>
+                                        </div>
+                        <h3 style="color: #ffd700; margin-bottom: 0;">Communication Log</h3>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="commLogSearch" placeholder="Search log..." style="padding:2px 8px; border-radius:5px; border:1px solid #ffd700; font-size:0.9em; width:120px;">
+                            <label for="commLogFilter" style="position:absolute;left:-9999px;">Filter communication log</label>
+                            <select id="commLogFilter" title="Filter communication log" style="padding:2px 8px; border-radius:5px; border:1px solid #ffd700; font-size:0.9em;">
+                                <option value="">All</option>
+                                <option value="success">Success</option>
+                                <option value="innovation">Innovation</option>
+                                <option value="evolution">Evolution</option>
+                                <option value="system">System</option>
+                            </select>
+                            <button class="btn-secondary" id="exportCommLogBtn" style="padding:2px 10px; font-size:0.9em;">Export Log</button>
+                        </div>
+                    </div>
                     <div class="communication-log" id="commLog"></div>
+                    <div id="agentInteractionViz" style="margin-top:10px;"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+                                        // --- Communication Log Filtering, Searching, Export, and Agent Viz ---
+                                        function filterAndRenderCommLog() {
+                                            const search = (document.getElementById('commLogSearch')?.value || '').toLowerCase();
+                                            const filter = document.getElementById('commLogFilter')?.value || '';
+                                            let entries = simulation.communicationLog;
+                                            if (filter) entries = entries.filter(e => e.type === filter);
+                                            if (search) entries = entries.filter(e => e.message.toLowerCase().includes(search));
+                                            const logContainer = document.getElementById('commLog');
+                                            logContainer.innerHTML = entries.slice(0, 20).map(entry => {
+                                                const className = entry.type === 'success' ? 'log-success' :
+                                                                entry.type === 'innovation' ? 'log-innovation' :
+                                                                entry.type === 'evolution' ? 'log-evolution' : '';
+                                                return `<div class="log-entry ${className}">[Gen ${entry.generation}] ${entry.message}</div>`;
+                                            }).join('');
+                                        }
+
+                                        function exportCommLog() {
+                                            const data = simulation.communicationLog.map(e =>
+                                                `[Gen ${e.generation}] (${e.type}) ${e.message}`
+                                            ).join('\n');
+                                            const blob = new Blob([data], {type:'text/plain'});
+                                            const a = document.createElement('a');
+                                            a.href = URL.createObjectURL(blob);
+                                            a.download = 'scriptforge-comm-log.txt';
+                                            a.click();
+                                            URL.revokeObjectURL(a.href);
+                                        }
+
+                                        function renderAgentInteractionViz() {
+                                            // Simple placeholder: show a count of unique agent interactions (future: draw a network)
+                                            const container = document.getElementById('agentInteractionViz');
+                                            if (!container) return;
+                                            // Parse log for agent-to-agent events
+                                            const pattern = /([A-Za-z]+): Symbol for "(.*?)" learned/;
+                                            const pairs = new Set();
+                                            simulation.communicationLog.forEach(e => {
+                                                const m = e.message.match(pattern);
+                                                if (m) pairs.add(m[1]+':'+m[2]);
+                                            });
+                                            container.innerHTML = `<div style='color:#ffd700;font-size:0.95em;'>Unique agent-concept learning events: <b>${pairs.size}</b></div>`;
+                                        }
+                                // --- Simulation Speed & Step Control ---
+                                let simulationInterval = null;
+                                let simulationSpeed = 1.0;
+
+                                function startSimulationLoop() {
+                                    if (simulationInterval) clearInterval(simulationInterval);
+                                    simulationInterval = setInterval(() => {
+                                        if (simulation.isRunning) {
+                                            simulation.step();
+                                        }
+                                    }, Math.max(50, 500 / simulationSpeed));
+                                }
+
+                                function stopSimulationLoop() {
+                                    if (simulationInterval) clearInterval(simulationInterval);
+                                    simulationInterval = null;
+                                }
+                        // --- Analytics Data ---
+                        const analytics = {
+                            generations: [],
+                            avgComplexity: [],
+                            vocabSizes: [],
+                            divergence: [],
+                            eventTimeline: [] // {gen, type}
+                        };
+
+                        // --- Chart.js Chart Instances ---
+                        let complexityChart, vocabChart, divergenceChart, eventTimelineChart;
+
+                        function setupCharts() {
+                            const genLabels = analytics.generations;
+                            // Complexity
+                            complexityChart = new Chart(document.getElementById('complexityChart').getContext('2d'), {
+                                type: 'line',
+                                data: {
+                                    labels: genLabels,
+                                    datasets: [{
+                                        label: 'Avg Symbol Complexity',
+                                        data: analytics.avgComplexity,
+                                        borderColor: '#ffd700',
+                                        backgroundColor: 'rgba(255,215,0,0.1)',
+                                        tension: 0.2,
+                                        pointRadius: 0
+                                    }]
+                                },
+                                options: {responsive:true, plugins:{legend:{display:false}}, scales:{x:{title:{display:true,text:'Generation'}},y:{title:{display:true,text:'Complexity'}}}}
+                            });
+                            // Vocabulary
+                            vocabChart = new Chart(document.getElementById('vocabChart').getContext('2d'), {
+                                type: 'line',
+                                data: {
+                                    labels: genLabels,
+                                    datasets: [{
+                                        label: 'Vocabulary Size',
+                                        data: analytics.vocabSizes,
+                                        borderColor: '#4ecdc4',
+                                        backgroundColor: 'rgba(78,205,196,0.1)',
+                                        tension: 0.2,
+                                        pointRadius: 0
+                                    }]
+                                },
+                                options: {responsive:true, plugins:{legend:{display:false}}, scales:{x:{title:{display:true,text:'Generation'}},y:{title:{display:true,text:'Vocabulary'}}}}
+                            });
+                            // Divergence
+                            divergenceChart = new Chart(document.getElementById('divergenceChart').getContext('2d'), {
+                                type: 'line',
+                                data: {
+                                    labels: genLabels,
+                                    datasets: [{
+                                        label: 'Cultural Divergence',
+                                        data: analytics.divergence,
+                                        borderColor: '#a29bfe',
+                                        backgroundColor: 'rgba(162,155,254,0.1)',
+                                        tension: 0.2,
+                                        pointRadius: 0
+                                    }]
+                                },
+                                options: {responsive:true, plugins:{legend:{display:false}}, scales:{x:{title:{display:true,text:'Generation'}},y:{title:{display:true,text:'Divergence'}}}}
+                            });
+                            // Event Timeline
+                            eventTimelineChart = new Chart(document.getElementById('eventTimelineChart').getContext('2d'), {
+                                type: 'scatter',
+                                data: {
+                                    datasets: [
+                                        {label:'Innovation',data:[],backgroundColor:'#fbbf24'},
+                                        {label:'Simplification',data:[],backgroundColor:'#818cf8'},
+                                        {label:'Communication',data:[],backgroundColor:'#4ade80'}
+                                    ]
+                                },
+                                options: {responsive:true, plugins:{legend:{display:true}}, scales:{x:{title:{display:true,text:'Generation'}},y:{display:false,min:0,max:1}}}
+                            });
+                        }
+
+                        function updateAnalytics() {
+                            // Track per generation
+                            const gen = simulation.generation;
+                            if (analytics.generations.length === 0 || analytics.generations[analytics.generations.length-1] !== gen) {
+                                analytics.generations.push(gen);
+                                // Avg complexity
+                                const stats = simulation.getStats();
+                                analytics.avgComplexity.push(Number(stats.avgComplexity));
+                                // Vocab size (total unique symbols)
+                                analytics.vocabSizes.push(stats.activeSymbols);
+                                // Divergence: count of unique shared symbols across cultures
+                                let divergence = 0;
+                                if (simulation.cultures.length > 1) {
+                                    const sets = simulation.cultures.map(c => new Set([...c.sharedSymbols.keys()]));
+                                    // Jaccard index for first two cultures
+                                    const a = sets[0], b = sets[1];
+                                    const intersection = new Set([...a].filter(x => b.has(x)));
+                                    const union = new Set([...a, ...b]);
+                                    divergence = 1 - (intersection.size / (union.size || 1));
+                                }
+                                analytics.divergence.push(divergence);
+                            }
+                            // Update event timeline
+                            const lastGen = analytics.eventTimeline.length > 0 ? analytics.eventTimeline[analytics.eventTimeline.length-1].gen : -1;
+                            simulation.communicationLog.forEach(e => {
+                                if (e.generation > lastGen) {
+                                    if (e.type === 'innovation' || e.type === 'evolution' || e.type === 'success') {
+                                        analytics.eventTimeline.push({gen: e.generation, type: e.type});
+                                    }
+                                }
+                            });
+                            // Update charts
+                            if (complexityChart && vocabChart && divergenceChart && eventTimelineChart) {
+                                complexityChart.data.labels = analytics.generations;
+                                complexityChart.data.datasets[0].data = analytics.avgComplexity;
+                                complexityChart.update();
+                                vocabChart.data.labels = analytics.generations;
+                                vocabChart.data.datasets[0].data = analytics.vocabSizes;
+                                vocabChart.update();
+                                divergenceChart.data.labels = analytics.generations;
+                                divergenceChart.data.datasets[0].data = analytics.divergence;
+                                divergenceChart.update();
+                                // Timeline
+                                const eventData = {innovation:[],evolution:[],success:[]};
+                                analytics.eventTimeline.forEach(ev => {
+                                    if (eventData[ev.type]) eventData[ev.type].push({x:ev.gen,y:0.5+Math.random()*0.2});
+                                });
+                                eventTimelineChart.data.datasets[0].data = eventData.innovation;
+                                eventTimelineChart.data.datasets[1].data = eventData.evolution;
+                                eventTimelineChart.data.datasets[2].data = eventData.success;
+                                eventTimelineChart.update();
+                            }
+                        }
+                // --- Parameter Preset & Sharing Functionality ---
+                function saveParameterPreset() {
+                    const preset = JSON.stringify(simulation.params, null, 2);
+                    const blob = new Blob([preset], { type: 'application/json' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'scriptforge-params.json';
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                }
+
+                function loadParameterPresetFromJSON(json) {
+                    try {
+                        const params = typeof json === 'string' ? JSON.parse(json) : json;
+                        // Validate keys
+                        const keys = [
+                            'numCultures','agentsPerCulture','culturalIsolation',
+                            'simplificationRate','innovationRate','abstractionPressure',
+                            'vocabularySize','communicationFrequency'
+                        ];
+                        for (const k of keys) {
+                            if (!(k in params)) throw new Error('Missing parameter: ' + k);
+                        }
+                        Object.assign(simulation.params, params);
+                        simulation.initialize();
+                        simulation.updateDisplay();
+                        renderer.render();
+                        alert('Parameter preset loaded!');
+                    } catch (e) {
+                        alert('Failed to load preset: ' + e.message);
+                    }
+                }
+
+                function getShareableConfigURL() {
+                    const base = window.location.origin + window.location.pathname;
+                    const params = encodeURIComponent(btoa(JSON.stringify(simulation.params)));
+                    return `${base}?config=${params}`;
+                }
+
+                function applyConfigFromURL() {
+                    const url = new URL(window.location.href);
+                    const config = url.searchParams.get('config');
+                    if (config) {
+                        try {
+                            const decoded = JSON.parse(atob(decodeURIComponent(config)));
+                            loadParameterPresetFromJSON(decoded);
+                        } catch (e) {
+                            alert('Invalid config in URL.');
+                        }
+                    }
+                }
+                // --- Preset Button Handlers ---
+                document.addEventListener('DOMContentLoaded', function() {
+                                // Speed slider
+                                const speedSlider = document.getElementById('speedSlider');
+                                const speedValue = document.getElementById('speedValue');
+                                if (speedSlider && speedValue) {
+                                    speedSlider.addEventListener('input', function() {
+                                        simulationSpeed = parseFloat(speedSlider.value);
+                                        speedValue.textContent = simulationSpeed.toFixed(1) + 'x';
+                                        if (simulation.isRunning) startSimulationLoop();
+                                    });
+                                }
+
+                                // Step button
+                                const stepBtn = document.getElementById('stepBtn');
+                                if (stepBtn) {
+                                    stepBtn.addEventListener('click', function() {
+                                        simulation.step();
+                                    });
+                                }
+
+                                // Start/Pause/Reset buttons (override default handlers)
+                                const startBtn = document.getElementById('startBtn');
+                                const pauseBtn = document.getElementById('pauseBtn');
+                                const resetBtn = document.getElementById('resetBtn');
+                                if (startBtn) {
+                                    startBtn.addEventListener('click', function() {
+                                        simulation.start();
+                                        startSimulationLoop();
+                                    });
+                                }
+                                if (pauseBtn) {
+                                    pauseBtn.addEventListener('click', function() {
+                                        simulation.pause();
+                                        stopSimulationLoop();
+                                    });
+                                }
+                                if (resetBtn) {
+                                    resetBtn.addEventListener('click', function() {
+                                        simulation.reset();
+                                        stopSimulationLoop();
+                                    });
+                                }
+                    // ...existing code...
+                    // Preset save
+                    const savePresetBtn = document.getElementById('savePresetBtn');
+                    if (savePresetBtn) {
+                        savePresetBtn.addEventListener('click', saveParameterPreset);
+                    }
+                    // Preset load
+                    const loadPresetBtn = document.getElementById('loadPresetBtn');
+                    const loadPresetInput = document.getElementById('loadPresetInput');
+                    if (loadPresetBtn && loadPresetInput) {
+                        loadPresetBtn.addEventListener('click', () => loadPresetInput.click());
+                        loadPresetInput.addEventListener('change', function(e) {
+                            const file = e.target.files[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = function(evt) {
+                                loadParameterPresetFromJSON(evt.target.result);
+                            };
+                            reader.readAsText(file);
+                        });
+                    }
+                    // Shareable link
+                    const sharePresetBtn = document.getElementById('sharePresetBtn');
+                    if (sharePresetBtn) {
+                        sharePresetBtn.addEventListener('click', function() {
+                            const url = getShareableConfigURL();
+                            navigator.clipboard.writeText(url).then(() => {
+                                alert('Shareable config link copied to clipboard!');
+                            }, () => {
+                                prompt('Copy this link:', url);
+                            });
+                        });
+                    }
+                    // Apply config from URL on load
+                    applyConfigFromURL();
+
+                    // Comm log filter/search/export
+                    var commLogSearch = document.getElementById('commLogSearch');
+                    var commLogFilter = document.getElementById('commLogFilter');
+                    var exportCommLogBtn = document.getElementById('exportCommLogBtn');
+                    if (commLogSearch) { commLogSearch.addEventListener('input', filterAndRenderCommLog); }
+                    if (commLogFilter) { commLogFilter.addEventListener('change', filterAndRenderCommLog); }
+                    if (exportCommLogBtn) { exportCommLogBtn.addEventListener('click', exportCommLog); }
+
+
+                });
         // Core Data Structures
+                // --- Import Functionality ---
+                function importSimulationFromJSON(json) {
+                    try {
+                        // Parse and validate
+                        const data = typeof json === 'string' ? JSON.parse(json) : json;
+                        if (!data || !data.parameters || !data.cultures || !data.symbols) {
+                            alert('Invalid simulation file.');
+                            return;
+                        }
+
+                        // Set parameters
+                        Object.assign(simulation.params, data.parameters);
+
+                        // Re-initialize simulation with new params
+                        simulation.initialize();
+
+                        // Restore generation
+                        simulation.generation = data.generation || 0;
+
+                        // Restore symbols
+                        simulation.allSymbols = [];
+                        const symbolMap = new Map();
+                        data.symbols.forEach(s => {
+                            const sym = new Symbol(s.meaning, s.complexity, s.isAbstract, s.cultureName);
+                            sym.id = s.id;
+                            sym.usageCount = s.usageCount;
+                            sym.generation = s.generation;
+                            sym.ancestors = s.ancestors || [];
+                            sym.strokes = s.strokes;
+                            sym.birthGeneration = s.birthGeneration || 0;
+                            symbolMap.set(sym.id, sym);
+                            simulation.allSymbols.push(sym);
+                        });
+
+                        // Restore cultures and agents
+                        simulation.cultures.forEach((culture, i) => {
+                            const cData = data.cultures[i];
+                            if (!cData) return;
+                            culture.name = cData.name;
+                            culture.color = cData.color;
+                            culture.generation = cData.generation;
+                            // Agents
+                            culture.agents.forEach((agent, j) => {
+                                const aData = cData.agents[j];
+                                if (!aData) return;
+                                agent.vocabulary = new Map();
+                                (aData.vocabulary || []).forEach(v => {
+                                    if (symbolMap.has(v.id)) {
+                                        agent.vocabulary.set(v.meaning, symbolMap.get(v.id));
+                                    }
+                                });
+                            });
+                            // Shared symbols
+                            culture.sharedSymbols = new Map();
+                            (cData.sharedSymbols || []).forEach(v => {
+                                if (symbolMap.has(v.id)) {
+                                    culture.sharedSymbols.set(v.meaning, symbolMap.get(v.id));
+                                }
+                            });
+                        });
+
+                        // Restore communication log
+                        simulation.communicationLog = data.communicationLog || [];
+
+                        simulation.updateDisplay();
+                        renderer.render();
+                        alert('Simulation imported successfully!');
+                    } catch (e) {
+                        alert('Failed to import simulation: ' + e.message);
+                    }
+                }
         class Symbol {
             constructor(meaning, complexity = 10, isAbstract = false, cultureName = null) {
                 this.id = Math.random().toString(36).substr(2, 9);
@@ -609,12 +1178,113 @@
         }
 
         class Agent {
+                                                // Track utterances (sentences generated by this agent)
+                                                utteranceHistory = [];
+
+                                    generateSentence({subject, verb, object, modifier}) {
+                                        let g = this.grammar || new Grammar({});
+                                        let words = {
+                                            subject: subject ? subject.meaning : '',
+                                            verb: verb ? verb.meaning : '',
+                                            object: object ? object.meaning : '',
+                                            modifier: modifier ? modifier.meaning : ''
+                                        };
+                                        if (g.useParticles) {
+                                            if (words.subject) words.subject += g.particles.subject;
+                                            if (words.object) words.object += g.particles.object;
+                                            if (words.verb) words.verb += g.particles.verb;
+                                            if (words.modifier) words.modifier += g.particles.modifier;
+                                        }
+                                        let phrase = '';
+                                        if (words.modifier && (g.adjNounOrder==='AdjNoun')) {
+                                            phrase = words.modifier + ' ' + words.subject;
+                                        } else if (words.modifier && (g.adjNounOrder==='NounAdj')) {
+                                            phrase = words.subject + ' ' + words.modifier;
+                                        } else {
+                                            phrase = words.subject;
+                                        }
+                                        let order = g.wordOrder;
+                                        let sent = '';
+                                        switch(order) {
+                                            case 'SVO':
+                                                sent = [phrase, words.verb, words.object].filter(Boolean).join(' ');
+                                                break;
+                                            case 'SOV':
+                                                sent = [phrase, words.object, words.verb].filter(Boolean).join(' ');
+                                                break;
+                                            case 'VSO':
+                                                sent = [words.verb, phrase, words.object].filter(Boolean).join(' ');
+                                                break;
+                                            case 'VOS':
+                                                sent = [words.verb, words.object, phrase].filter(Boolean).join(' ');
+                                                break;
+                                            case 'OSV':
+                                                sent = [words.object, phrase, words.verb].filter(Boolean).join(' ');
+                                                break;
+                                            case 'OVS':
+                                                sent = [words.object, words.verb, phrase].filter(Boolean).join(' ');
+                                                break;
+                                            default:
+                                                sent = [phrase, words.verb, words.object].filter(Boolean).join(' ');
+                                        }
+                                        let sentence = sent.trim();
+                                        // Track utterance in agent and globally
+                                        let utterance = {
+                                            sentence,
+                                            agent: this,
+                                            culture: this.culture,
+                                            grammar: g,
+                                            generation: (typeof simulation !== 'undefined' && simulation.generation !== undefined) ? simulation.generation : 0
+                                        };
+                                        this.utteranceHistory.push(utterance);
+                                        if (this.utteranceHistory.length > 20) this.utteranceHistory.shift();
+                                        if (typeof simulation !== 'undefined' && simulation.logUtterance) simulation.logUtterance(utterance);
+                                        return sentence;
+                                    }
+                        // Learn a compound
+                        learnCompound(compound) {
+                            if (!this.vocabulary.has(compound.meaning)) {
+                                this.vocabulary.set(compound.meaning, compound);
+                                return true;
+                            }
+                            return false;
+                        }
+                        // Create a compound from known symbols
+                        createCompound(meaning, knownSymbols, cultureName) {
+                            // Only create if agent knows at least 2 symbols
+                            if (knownSymbols.length < 2) return null;
+                            const compound = new Compound(knownSymbols, meaning, cultureName);
+                            this.vocabulary.set(meaning, compound);
+                            return compound;
+                        }
             constructor(culture, x, y) {
                 this.culture = culture;
                 this.x = x;
                 this.y = y;
                 this.vocabulary = new Map(); // meaning -> Symbol
                 this.communicationHistory = [];
+                // Each agent starts with a copy of their culture's grammar
+                this.grammar = culture.grammar.clone();
+            }
+
+            maybeInnovateGrammar() {
+                if (this.grammar && Math.random() < 0.05) {
+                    this.grammar = this.grammar.innovate();
+                }
+            }
+
+            learnGrammarFrom(other) {
+                if (!this.grammar || !other.grammar) return;
+                if (Math.random() < 0.1) {
+                    let features = ['wordOrder','adjNounOrder','useParticles'];
+                    let f = features[Math.floor(Math.random()*features.length)];
+                    this.grammar[f] = other.grammar[f];
+                    if (f==='useParticles' && this.grammar.useParticles) {
+                        let keys = Object.keys(this.grammar.particles);
+                        let k = keys[Math.floor(Math.random()*keys.length)];
+                        this.grammar.particles[k] = other.grammar.particles[k];
+                    }
+                }
             }
 
             learn(symbol) {
@@ -623,6 +1293,15 @@
                     return true;
                 }
                 return false;
+            }
+
+            learnFrom(other) {
+                // Learn symbols and compounds
+                other.vocabulary.forEach((symbol, meaning) => {
+                    if (Math.random() < 0.5) this.learn(symbol);
+                });
+                // Learn grammar features
+                this.learnGrammarFrom(other);
             }
 
             communicate(other, meaning) {
@@ -656,6 +1335,18 @@
                 this.agents = [];
                 this.sharedSymbols = new Map();
                 this.generation = 0;
+                // Each culture starts with a random grammar
+                this.grammar = new Grammar({
+                    wordOrder: ['SVO','SOV','VSO','VOS','OSV','OVS'][Math.floor(Math.random()*6)],
+                    adjNounOrder: Math.random()<0.5 ? 'AdjNoun' : 'NounAdj',
+                    useParticles: Math.random()<0.5,
+                    particles: {
+                        subject: ['-ka','-no','-te','-li','-zu','-ra','-mi','-po','-sa','-tu',''][Math.floor(Math.random()*11)],
+                        object: ['-ka','-no','-te','-li','-zu','-ra','-mi','-po','-sa','-tu',''][Math.floor(Math.random()*11)],
+                        verb: ['-ka','-no','-te','-li','-zu','-ra','-mi','-po','-sa','-tu',''][Math.floor(Math.random()*11)],
+                        modifier: ['-ka','-no','-te','-li','-zu','-ra','-mi','-po','-sa','-tu',''][Math.floor(Math.random()*11)]
+                    }
+                });
             }
 
             addAgent(agent) {
@@ -688,15 +1379,76 @@
 
         // Simulation Engine
         class ScriptForgeSimulation {
+                                                // Render recent utterances/expressions
+                                                renderUtteranceLog() {
+                                                    let utterDiv = document.getElementById('utterance-log');
+                                                    if (!utterDiv) {
+                                                        utterDiv = document.createElement('div');
+                                                        utterDiv.id = 'utterance-log';
+                                                        document.body.insertBefore(utterDiv, document.body.firstChild.nextSibling.nextSibling);
+                                                    }
+                                                    let html = '<h3>Recent Utterances</h3>';
+                                                    html += '<div style="max-height:220px;overflow-y:auto;font-size:1em;background:rgba(0,0,0,0.15);padding:8px;border-radius:8px;">';
+                                                    for (let utt of this.utteranceLog.slice(0, 20)) {
+                                                        html += `<span style=\"color:${utt.culture.color};font-weight:bold;\">${utt.culture.name}</span> <span style=\"font-size:0.9em;color:#aaa;\">[Gen ${utt.generation}]</span>:`;
+                                                        html += ` <span style=\"font-family:monospace;\">${utt.sentence}</span> <span style=\"font-size:0.8em;color:#888;\">(${utt.grammar.describe()})</span><br>`;
+                                                    }
+                                                    html += '</div>';
+                                                    utterDiv.innerHTML = html;
+                                                }
+                                    utteranceLog = [];
+
+                                    logUtterance(utterance) {
+                                        this.utteranceLog.unshift(utterance);
+                                        if (this.utteranceLog.length > 50) this.utteranceLog.pop();
+                                    }
+                        // Render grammar info for each culture
+                        renderGrammarInfo() {
+                            let grammarDiv = document.getElementById('grammar-info');
+                            if (!grammarDiv) {
+                                grammarDiv = document.createElement('div');
+                                grammarDiv.id = 'grammar-info';
+                                document.body.insertBefore(grammarDiv, document.body.firstChild);
+                            }
+                            grammarDiv.innerHTML = '<h3>Culture Grammars</h3>' + this.cultures.map(c=>`<b style=\"color:${c.color}\">${c.name}</b>: ${c.grammar ? c.grammar.describe() : ''}`).join('<br>');
+                        }
+
+                        // Render example sentences for each culture
+                        renderExampleSentences() {
+                            let exDiv = document.getElementById('example-sentences');
+                            if (!exDiv) {
+                                exDiv = document.createElement('div');
+                                exDiv.id = 'example-sentences';
+                                document.body.insertBefore(exDiv, document.body.firstChild.nextSibling);
+                            }
+                            let html = '<h3>Example Sentences</h3>';
+                            for (let culture of this.cultures) {
+                                let agent = culture.agents[Math.floor(Math.random()*culture.agents.length)];
+                                let known = Array.from(agent.vocabulary.values());
+                                let pick = arr => arr.length ? arr[Math.floor(Math.random()*arr.length)] : null;
+                                let subject = pick(known);
+                                let verb = pick(known);
+                                let object = pick(known);
+                                let modifier = pick(known);
+                                let sentence = agent.generateSentence({subject, verb, object, modifier});
+                                html += `<b style=\"color:${culture.color}\">${culture.name}</b>: <span style=\"font-family:monospace\">${sentence}</span> <span style=\"font-size:smaller;color:#888\">(${agent.grammar ? agent.grammar.describe() : ''})</span><br>`;
+                            }
+                            exDiv.innerHTML = html;
+                        }
             constructor() {
                 this.cultures = [];
                 this.allSymbols = [];
                 this.generation = 0;
                 this.isRunning = false;
                 this.conceptPool = [
-                    'sun', 'moon', 'water', 'fire', 'tree', 'house',
-                    'person', 'animal', 'food', 'tool', 'speak', 'think',
-                    'big', 'small', 'move', 'stay', 'give', 'take'
+                    // Nouns
+                    'sun', 'moon', 'water', 'fire', 'tree', 'house', 'person', 'animal', 'food', 'tool', 'mountain', 'river', 'sky', 'star', 'rock', 'child', 'parent', 'friend', 'enemy', 'village', 'city', 'road', 'field', 'rain', 'wind', 'cloud', 'bird', 'fish', 'fruit', 'seed',
+                    // Verbs
+                    'speak', 'think', 'see', 'hear', 'eat', 'drink', 'run', 'walk', 'sleep', 'wake', 'build', 'destroy', 'give', 'take', 'find', 'lose', 'come', 'go', 'make', 'break', 'grow', 'fall', 'rise', 'swim', 'fly', 'hunt', 'gather', 'teach', 'learn', 'write', 'read',
+                    // Adjectives
+                    'big', 'small', 'fast', 'slow', 'hot', 'cold', 'old', 'new', 'good', 'bad', 'bright', 'dark', 'strong', 'weak', 'happy', 'sad', 'full', 'empty', 'high', 'low',
+                    // Function words / pronouns / particles
+                    'and', 'or', 'not', 'if', 'with', 'without', 'for', 'from', 'to', 'in', 'on', 'by', 'of', 'at', 'as', 'is', 'was', 'will', 'can', 'must', 'I', 'you', 'he', 'she', 'we', 'they', 'it', 'this', 'that', 'who', 'what', 'when', 'where', 'how', 'why'
                 ];
                 this.communicationLog = [];
                 
@@ -713,42 +1465,83 @@
                 };
             }
 
-            initialize() {
+            initialize(importedData) {
                 this.cultures = [];
                 this.allSymbols = [];
                 this.generation = 0;
                 this.communicationLog = [];
+                this.utteranceLog = [];
 
-                const cultureNames = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'];
-                const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#a29bfe'];
-
-                // Create cultures
-                for (let i = 0; i < this.params.numCultures; i++) {
-                    const angle = (i / this.params.numCultures) * Math.PI * 2;
-                    const radius = 300;
-                    const x = 400 + Math.cos(angle) * radius;
-                    const y = 300 + Math.sin(angle) * radius;
-                    
-                    const culture = new Culture(cultureNames[i], colors[i], x, y);
-                    
-                    // Create agents for this culture
-                    for (let j = 0; j < this.params.agentsPerCulture; j++) {
-                        const agentAngle = (j / this.params.agentsPerCulture) * Math.PI * 2;
-                        const agentRadius = 50;
-                        const agentX = x + Math.cos(agentAngle) * agentRadius;
-                        const agentY = y + Math.sin(agentAngle) * agentRadius;
-                        
-                        const agent = new Agent(culture.name, agentX, agentY);
-                        culture.addAgent(agent);
+                if (importedData && importedData.cultures) {
+                    // Import mode
+                    for (let cData of importedData.cultures) {
+                        // Use default positions/colors if not present
+                        const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#a29bfe'];
+                        const idx = this.cultures.length;
+                        const x = 400 + Math.cos(idx / 5 * Math.PI * 2) * 300;
+                        const y = 300 + Math.sin(idx / 5 * Math.PI * 2) * 300;
+                        const culture = new Culture(cData.name, cData.color || colors[idx], x, y);
+                        // Restore grammar if present
+                        if (cData.grammar) {
+                            culture.grammar = new Grammar({
+                                wordOrder: cData.grammar.wordOrder,
+                                adjNounOrder: cData.grammar.adjNounOrder,
+                                useParticles: cData.grammar.useParticles,
+                                particles: cData.grammar.particles
+                            });
+                        }
+                        // Create agents
+                        for (let j = 0; j < (this.params.agentsPerCulture || 8); j++) {
+                            const agentAngle = (j / (this.params.agentsPerCulture || 8)) * Math.PI * 2;
+                            const agentRadius = 50;
+                            const agentX = x + Math.cos(agentAngle) * agentRadius;
+                            const agentY = y + Math.sin(agentAngle) * agentRadius;
+                            const agent = new Agent(culture, agentX, agentY);
+                            // Restore example sentences to agent utteranceHistory if present
+                            if (cData.exampleSentences && cData.exampleSentences[j]) {
+                                agent.utteranceHistory = [cData.exampleSentences[j]];
+                            }
+                            culture.addAgent(agent);
+                        }
+                        // Restore symbols (sharedSymbols)
+                        if (cData.symbols) {
+                            for (let s of cData.symbols) {
+                                // Recreate as Symbol (minimal)
+                                let symbol = Object.assign({}, s);
+                                culture.sharedSymbols.set(symbol.meaning, symbol);
+                                this.allSymbols.push(symbol);
+                            }
+                        }
+                        this.cultures.push(culture);
                     }
-                    
-                    this.cultures.push(culture);
+                    this.generation = importedData.metadata && importedData.metadata.generation ? importedData.metadata.generation : 0;
+                    this.log('Simulation imported', 'system');
+                } else {
+                    // Normal mode
+                    const cultureNames = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'];
+                    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#a29bfe'];
+                    // Create cultures
+                    for (let i = 0; i < this.params.numCultures; i++) {
+                        const angle = (i / this.params.numCultures) * Math.PI * 2;
+                        const radius = 300;
+                        const x = 400 + Math.cos(angle) * radius;
+                        const y = 300 + Math.sin(angle) * radius;
+                        const culture = new Culture(cultureNames[i], colors[i], x, y);
+                        // Create agents for this culture
+                        for (let j = 0; j < this.params.agentsPerCulture; j++) {
+                            const agentAngle = (j / this.params.agentsPerCulture) * Math.PI * 2;
+                            const agentRadius = 50;
+                            const agentX = x + Math.cos(agentAngle) * agentRadius;
+                            const agentY = y + Math.sin(agentAngle) * agentRadius;
+                            const agent = new Agent(culture, agentX, agentY);
+                            culture.addAgent(agent);
+                        }
+                        this.cultures.push(culture);
+                    }
+                    // Initialize with basic pictographs
+                    this.seedInitialSymbols();
+                    this.log('Simulation initialized', 'system');
                 }
-
-                // Initialize with basic pictographs
-                this.seedInitialSymbols();
-                
-                this.log('Simulation initialized', 'system');
             }
 
             seedInitialSymbols() {
@@ -802,8 +1595,16 @@
 
                 // Innovation events
                 if (Math.random() < this.params.innovationRate) {
-                    this.innovationEvent(culture);
+                    // 50% chance to innovate a compound instead of a single symbol
+                    if (Math.random() < 0.5) {
+                        this.compoundInnovationEvent(culture);
+                    } else {
+                        this.innovationEvent(culture);
+                    }
                 }
+
+                // Grammar innovation (step 3)
+                culture.agents.forEach(agent => agent.maybeInnovateGrammar());
 
                 // Simplification pressure
                 if (Math.random() < this.params.simplificationRate) {
@@ -813,6 +1614,29 @@
                 // Abstraction pressure
                 if (Math.random() < this.params.abstractionPressure) {
                     this.abstractionEvent(culture);
+                }
+            }
+
+            // Compound innovation event
+            compoundInnovationEvent(culture) {
+                // Pick an agent
+                const agent = culture.agents[Math.floor(Math.random() * culture.agents.length)];
+                // Pick 2+ known symbols
+                const knownSymbols = Array.from(agent.vocabulary.values()).filter(s => s instanceof Symbol);
+                if (knownSymbols.length < 2) return;
+                // Pick a new meaning not in vocabulary
+                const unusedConcepts = this.conceptPool.filter(c => !agent.vocabulary.has(c));
+                if (unusedConcepts.length === 0) return;
+                const meaning = unusedConcepts[Math.floor(Math.random() * unusedConcepts.length)];
+                // Pick 2 random known symbols
+                const chosen = [];
+                while (chosen.length < 2) {
+                    const s = knownSymbols[Math.floor(Math.random() * knownSymbols.length)];
+                    if (!chosen.includes(s)) chosen.push(s);
+                }
+                const compound = agent.createCompound(meaning, chosen, culture.name);
+                if (compound) {
+                    this.log(`${culture.name}: Compound for "${meaning}" created from [${chosen.map(s=>s.meaning).join(', ')}]`, 'innovation');
                 }
             }
 
@@ -969,19 +1793,20 @@
 
                 // Update communication log
                 this.updateCommunicationLog();
-                
                 // Update symbol display
                 this.updateSymbolDisplay();
+                // Update grammar info and example sentences
+                this.renderGrammarInfo();
+                this.renderExampleSentences();
+                // Update utterance log
+                this.renderUtteranceLog();
+                updateAnalytics();
             }
+        // Setup charts after DOM loaded (merged into main handler below)
 
             updateCommunicationLog() {
-                const logContainer = document.getElementById('commLog');
-                logContainer.innerHTML = this.communicationLog.slice(0, 20).map(entry => {
-                    const className = entry.type === 'success' ? 'log-success' :
-                                    entry.type === 'innovation' ? 'log-innovation' :
-                                    entry.type === 'evolution' ? 'log-evolution' : '';
-                    return `<div class="log-entry ${className}">[Gen ${entry.generation}] ${entry.message}</div>`;
-                }).join('');
+                filterAndRenderCommLog();
+                renderAgentInteractionViz();
             }
 
             updateSymbolDisplay() {
@@ -995,14 +1820,24 @@
                     const symbolArray = Array.from(culture.sharedSymbols.values());
                     symbolArray.forEach((symbol, idx) => {
                         const canvasId = `symbol-${culture.name}-${idx}`;
-                        html += `
-                            <div class="symbol-card">
-                                <canvas id="${canvasId}" width="80" height="80" class="symbol-canvas"></canvas>
-                                <div class="symbol-meaning">${symbol.meaning}</div>
-                                <div class="symbol-complexity">⚡ ${symbol.complexity} | ${symbol.isAbstract ? '📝 Abstract' : '🖼️ Pictographic'}</div>
-                                <div style="font-size: 0.7em; color: #666;">Gen ${symbol.birthGeneration}</div>
-                            </div>
-                        `;
+                        html += `<div class="symbol-card">`;
+                        if (symbol instanceof Compound) {
+                            // Draw each symbol in the compound
+                            html += `<div style='display:flex; gap:2px; justify-content:center;'>`;
+                            symbol.symbols.forEach((s, cidx) => {
+                                const subCanvasId = `${canvasId}-c${cidx}`;
+                                html += `<canvas id="${subCanvasId}" width="38" height="38" class="symbol-canvas"></canvas>`;
+                            });
+                            html += `</div>`;
+                            html += `<div class="symbol-meaning">${symbol.meaning} <span style='font-size:0.7em;'>(compound)</span></div>`;
+                            html += `<div style="font-size: 0.7em; color: #666;">Gen ${symbol.birthGeneration}</div>`;
+                        } else {
+                            html += `<canvas id="${canvasId}" width="80" height="80" class="symbol-canvas"></canvas>`;
+                            html += `<div class="symbol-meaning">${symbol.meaning}</div>`;
+                            html += `<div class="symbol-complexity">⚡ ${symbol.complexity} | ${symbol.isAbstract ? '📝 Abstract' : '🖼️ Pictographic'}</div>`;
+                            html += `<div style="font-size: 0.7em; color: #666;">Gen ${symbol.birthGeneration}</div>`;
+                        }
+                        html += `</div>`;
                     });
                     
                     html += '</div>';
@@ -1015,9 +1850,19 @@
                     const symbolArray = Array.from(culture.sharedSymbols.values());
                     symbolArray.forEach((symbol, idx) => {
                         const canvasId = `symbol-${culture.name}-${idx}`;
-                        const canvas = document.getElementById(canvasId);
-                        if (canvas) {
-                            this.drawSymbolOnCanvas(canvas, symbol, culture.color);
+                        if (symbol instanceof Compound) {
+                            symbol.symbols.forEach((s, cidx) => {
+                                const subCanvasId = `${canvasId}-c${cidx}`;
+                                const canvas = document.getElementById(subCanvasId);
+                                if (canvas) {
+                                    this.drawSymbolOnCanvas(canvas, s, culture.color);
+                                }
+                            });
+                        } else {
+                            const canvas = document.getElementById(canvasId);
+                            if (canvas) {
+                                this.drawSymbolOnCanvas(canvas, symbol, culture.color);
+                            }
                         }
                     });
                 });
@@ -1260,6 +2105,23 @@
         }
 
         // Export Manager
+                // --- Import Button Handlers ---
+                document.addEventListener('DOMContentLoaded', function() {
+                    const importBtn = document.getElementById('importJsonBtn');
+                    const importInput = document.getElementById('importJsonInput');
+                    if (importBtn && importInput) {
+                        importBtn.addEventListener('click', () => importInput.click());
+                        importInput.addEventListener('change', function(e) {
+                            const file = e.target.files[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = function(evt) {
+                                importSimulationFromJSON(evt.target.result);
+                            };
+                            reader.readAsText(file);
+                        });
+                    }
+                });
         class ExportManager {
             constructor(simulation) {
                 this.simulation = simulation;
@@ -1438,6 +2300,12 @@
                         name: culture.name,
                         color: culture.color,
                         generation: culture.generation,
+                        grammar: culture.grammar ? {
+                            wordOrder: culture.grammar.wordOrder,
+                            adjNounOrder: culture.grammar.adjNounOrder,
+                            useParticles: culture.grammar.useParticles,
+                            particles: {...culture.grammar.particles}
+                        } : undefined,
                         symbols: Array.from(culture.sharedSymbols.values()).map(symbol => ({
                             id: symbol.id,
                             meaning: symbol.meaning,
@@ -1446,7 +2314,25 @@
                             usageCount: symbol.usageCount,
                             birthGeneration: symbol.birthGeneration,
                             strokes: symbol.strokes
-                        }))
+                        })),
+                        exampleSentences: (() => {
+                            // Pick up to 5 recent utterances from agents in this culture
+                            let utterances = [];
+                            for (let agent of culture.agents) {
+                                if (agent.utteranceHistory) utterances = utterances.concat(agent.utteranceHistory.slice(-3));
+                            }
+                            utterances = utterances.sort((a,b)=>b.generation-a.generation).slice(0,5);
+                            return utterances.map(u => ({
+                                sentence: u.sentence,
+                                grammar: u.grammar ? {
+                                    wordOrder: u.grammar.wordOrder,
+                                    adjNounOrder: u.grammar.adjNounOrder,
+                                    useParticles: u.grammar.useParticles,
+                                    particles: {...u.grammar.particles}
+                                } : undefined,
+                                generation: u.generation
+                            }));
+                        })()
                     })),
                     stats: this.simulation.getStats()
                 };
